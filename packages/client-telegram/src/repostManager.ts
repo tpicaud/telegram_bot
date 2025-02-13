@@ -71,7 +71,7 @@ export type InterestChats = {
     };
 };
 
-export class MessageManager {
+export class RepostManager {
     public bot: Telegraf<Context>;
     private runtime: IAgentRuntime;
     private interestChats: InterestChats = {};
@@ -197,13 +197,13 @@ export class MessageManager {
             if (
                 timeSinceLastMessage > randomThreshold &&
                 timeSinceLastAutoPost >
-                    (this.autoPostConfig.minTimeBetweenPosts || 0)
+                (this.autoPostConfig.minTimeBetweenPosts || 0)
             ) {
                 try {
                     const roomId = stringToUuid(
                         this.autoPostConfig.mainChannelId +
-                            "-" +
-                            this.runtime.agentId
+                        "-" +
+                        this.runtime.agentId
                     );
                     const memory = {
                         id: stringToUuid(`autopost-${Date.now()}`),
@@ -325,12 +325,12 @@ export class MessageManager {
             // Explicitly type and handle message content
             const messageContent: string =
                 "text" in pinnedMessage &&
-                typeof pinnedMessage.text === "string"
+                    typeof pinnedMessage.text === "string"
                     ? pinnedMessage.text
                     : "caption" in pinnedMessage &&
-                      typeof pinnedMessage.caption === "string"
-                    ? pinnedMessage.caption
-                    : "New pinned message";
+                        typeof pinnedMessage.caption === "string"
+                        ? pinnedMessage.caption
+                        : "New pinned message";
 
             const roomId = stringToUuid(
                 mainChannel + "-" + this.runtime.agentId
@@ -503,8 +503,8 @@ export class MessageManager {
             "text" in message
                 ? message.text
                 : "caption" in message
-                ? message.caption
-                : "";
+                    ? message.caption
+                    : "";
 
         if (!messageText) return false;
 
@@ -566,8 +566,8 @@ export class MessageManager {
             "text" in message
                 ? message.text
                 : "caption" in message
-                ? message.caption
-                : "";
+                    ? message.caption
+                    : "";
         if (!messageText) return false;
 
         const isReplyToBot =
@@ -714,8 +714,8 @@ export class MessageManager {
             "text" in message
                 ? message.text
                 : "caption" in message
-                ? message.caption
-                : "";
+                    ? message.caption
+                    : "";
 
         // Check if team member has direct interest first
         if (
@@ -736,8 +736,8 @@ export class MessageManager {
                     const randomDelay =
                         Math.floor(
                             Math.random() *
-                                (TIMING_CONSTANTS.TEAM_MEMBER_DELAY_MAX -
-                                    TIMING_CONSTANTS.TEAM_MEMBER_DELAY_MIN)
+                            (TIMING_CONSTANTS.TEAM_MEMBER_DELAY_MAX -
+                                TIMING_CONSTANTS.TEAM_MEMBER_DELAY_MIN)
                         ) + TIMING_CONSTANTS.TEAM_MEMBER_DELAY_MIN; // 1-3 second random delay
                     await new Promise((resolve) =>
                         setTimeout(resolve, randomDelay)
@@ -763,8 +763,8 @@ export class MessageManager {
                     const leaderResponded = recentMessages.some(
                         (m) =>
                             m.userId ===
-                                this.runtime.character.clientConfig?.telegram
-                                    ?.teamLeaderId &&
+                            this.runtime.character.clientConfig?.telegram
+                                ?.teamLeaderId &&
                             Date.now() - chatState.lastMessageSent < 3000
                     );
 
@@ -785,8 +785,8 @@ export class MessageManager {
                 const randomDelay =
                     Math.floor(
                         Math.random() *
-                            (TIMING_CONSTANTS.LEADER_DELAY_MAX -
-                                TIMING_CONSTANTS.LEADER_DELAY_MIN)
+                        (TIMING_CONSTANTS.LEADER_DELAY_MAX -
+                            TIMING_CONSTANTS.LEADER_DELAY_MIN)
                     ) + TIMING_CONSTANTS.LEADER_DELAY_MIN; // 2-4 second random delay
                 await new Promise((resolve) =>
                     setTimeout(resolve, randomDelay)
@@ -824,7 +824,7 @@ export class MessageManager {
             if (chatState?.currentHandler) {
                 if (
                     chatState.currentHandler !==
-                        this.bot.botInfo?.id.toString() &&
+                    this.bot.botInfo?.id.toString() &&
                     this._isTeamMember(chatState.currentHandler)
                 ) {
                     return false;
@@ -994,8 +994,7 @@ export class MessageManager {
             }
 
             elizaLogger.info(
-                `${
-                    type.charAt(0).toUpperCase() + type.slice(1)
+                `${type.charAt(0).toUpperCase() + type.slice(1)
                 } sent successfully: ${mediaPath}`
             );
         } catch (error) {
@@ -1095,8 +1094,8 @@ export class MessageManager {
             "text" in message
                 ? message.text
                 : "caption" in message
-                ? message.caption
-                : "";
+                    ? message.caption
+                    : "";
 
         // Add team handling at the start
         if (
@@ -1186,7 +1185,7 @@ export class MessageManager {
                 if (
                     hasInterest ||
                     this.interestChats[chatId]?.currentHandler ===
-                        this.bot.botInfo?.id.toString()
+                    this.bot.botInfo?.id.toString()
                 ) {
                     delete this.interestChats[chatId];
 
@@ -1290,10 +1289,10 @@ export class MessageManager {
                 inReplyTo:
                     "reply_to_message" in message && message.reply_to_message
                         ? stringToUuid(
-                              message.reply_to_message.message_id.toString() +
-                                  "-" +
-                                  this.runtime.agentId
-                          )
+                            message.reply_to_message.message_id.toString() +
+                            "-" +
+                            this.runtime.agentId
+                        )
                         : undefined,
             };
 
@@ -1428,4 +1427,11 @@ export class MessageManager {
     //////////////////////
     // Cryptoast Repost //
     //////////////////////
+    public async handleRepost(ctx: Context): Promise<void> {
+
+        // Check incoming messages
+        if (ctx.message) {
+            elizaLogger.log('New Message in channel: ', this.autoPostConfig.mainChannelId)
+        }
+    }
 }

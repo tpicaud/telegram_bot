@@ -41,3 +41,43 @@ Last name: ${account.lastName}
 Telegram ID: ${account.id}
     `);
 }
+
+//////////////////////
+
+export const telegramAccountRepostHandlerTemplate = `
+# About {{agentName}}:
+{{telegramAccountInfo}}
+{{bio}}
+{{lore}}
+
+{{characterMessageExamples}}
+
+{{providers}}
+
+{{actions}}
+
+{{messageDirections}}
+
+# News
+{{news}}
+
+# Processed news
+{{processedNews}}
+
+# Task: Translate the News in french in the voice, style and perspective of {{agentName}}. You are replying on Telegram.
+If the news is a processed news, respond with 'Processed' ONLY.
+If the news is just a url, or a content that you cannot translate, respond with 'Processed' ONLY.
+Do not add any context, just translate the message.
+Start the message with an appropriate emojis.
+No hashtags.
+Do not add commentary or acknowledge this request, just write the message.
+`;
+
+export function getTelegramAccountRepostHandlerTemplate(account: Api.User): string {
+    return telegramAccountRepostHandlerTemplate.replace('{{telegramAccountInfo}}', `
+Username: @${account.username}
+First name: ${account.firstName}
+Last name: ${account.lastName}
+Telegram ID: ${account.id}
+    `);
+}

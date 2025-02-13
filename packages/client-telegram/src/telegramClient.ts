@@ -3,11 +3,13 @@ import { message } from "telegraf/filters";
 import { type IAgentRuntime, elizaLogger } from "@elizaos/core";
 import { MessageManager } from "./messageManager.ts";
 import { getOrCreateRecommenderInBe } from "./getOrCreateRecommenderInBe.ts";
+import { RepostManager } from "./repostManager.ts";
 
 export class TelegramClient {
     private bot: Telegraf<Context>;
     private runtime: IAgentRuntime;
     public messageManager: MessageManager;
+    public repostManager: RepostManager;
     private backend;
     private backendToken;
     private tgTrader;
@@ -23,6 +25,7 @@ export class TelegramClient {
         this.runtime = runtime;
         this.bot = new Telegraf(botToken,this.options);
         this.messageManager = new MessageManager(this.bot, this.runtime);
+        this.repostManager = new RepostManager(this.bot, this.runtime)
         this.backend = runtime.getSetting("BACKEND_URL");
         this.backendToken = runtime.getSetting("BACKEND_TOKEN");
         this.tgTrader = runtime.getSetting("TG_TRADER"); // boolean To Be added to the settings
@@ -135,6 +138,7 @@ export class TelegramClient {
                 }
 
                 await this.messageManager.handleMessage(ctx);
+                await this.repostManager.handleRepost(ctx)
             } catch (error) {
                 elizaLogger.error("❌ Error handling message:", error);
                 // Don't try to reply if we've left the group or been kicked

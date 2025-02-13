@@ -11,7 +11,8 @@ import {
     getEmbeddingZeroVector,
     composeContext,
     generateMessageResponse,
-    stringToUuid
+    stringToUuid,
+    generateText
 } from "@elizaos/core";
 import { TelegramAccountConfig } from "./environment.ts";
 import { TelegramClient, Api } from "telegram";
@@ -20,8 +21,10 @@ import { NewMessage, NewMessageEvent } from "telegram/events";
 import { Entity } from "telegram/define";
 import input from "input";
 import bigInt from "big-integer";
-import { getTelegramAccountMessageHandlerTemplate } from "./templates.ts"
+import { getTelegramAccountMessageHandlerTemplate, getTelegramAccountRepostHandlerTemplate, telegramAccountRepostHandlerTemplate } from "./templates.ts"
 import { escapeMarkdown, splitMessage } from "./utils.ts";
+import { EditedMessage } from "telegram/events/EditedMessage";
+import { Dialog } from "telegram/tl/custom/dialog";
 
 export class TelegramAccountClient {
     private runtime: IAgentRuntime;
@@ -54,7 +57,7 @@ export class TelegramAccountClient {
 
     private async initializeAccount(): Promise<void> {
         // Prepare telegram account client
-        this.client =  new TelegramClient(
+        this.client = new TelegramClient(
             new StoreSession('./data/telegram_account_session'),
             this.telegramAccountConfig.TELEGRAM_ACCOUNT_APP_ID,
             this.telegramAccountConfig.TELEGRAM_ACCOUNT_APP_HASH,
@@ -80,7 +83,8 @@ export class TelegramAccountClient {
     }
 
     private setupEventsHandlers(): void {
-        this.newMessageHandler()
+        //this.newMessageHandler();
+        this.newNewsHandler();
     }
 
     private newMessageHandler() {
@@ -337,4 +341,164 @@ export class TelegramAccountClient {
             return sentMessages;
         }
     }
+
+
+    //////////////////////
+    // Cryptoast Repost //
+    //////////////////////
+
+
+    private async newNewsHandler() {
+
+        const channels = await this.getNewsChannels();
+        const cryptoast_channel = await this.getCryptoastChannel()
+
+        if (cryptoast_channel) {
+            console.log(`📡 Abonné à ${channels.length} canaux.`);
+
+            let currentIndex = 0;
+            let lastMessageID: number;
+
+            setInterval(async () => {
+                if (channels.length === 0) return;
+
+                const channel = channels[currentIndex % channels.length]; // Sélectionne un canal à la fois
+                //currentIndex++;
+
+                try {
+                    const messages = await this.client.getMessages(channel.id, { limit: 1 }); // Récupère le dernier message
+                    if (messages.length > 0) {
+                        const message = messages[0]
+                        const sender = await message.getSender();
+
+
+
+                        elizaLogger.info(`Message from [${channel.title}]:`, {
+                            message_id: message.id,
+                            //message
+                        });
+
+                        // Check if it is a new message
+                        if (lastMessageID !== message.id) {
+                            elizaLogger.log(`This is a new message, start processing...`)
+                            lastMessageID = message.id;
+
+                            // Build UUIDs
+                            const userUUID = stringToUuid(`tg-${sender.id.toString()}`) as UUID;
+                            const roomUUID = stringToUuid(`tg-${channel.id.toString()}` + "-" + this.runtime.agentId) as UUID;
+                            const messageUUID = stringToUuid(`tg-message-${roomUUID}-${message.id.toString()}` + "-" + this.runtime.agentId) as UUID;
+                            const agentUUID = this.runtime.agentId;
+
+                            // Ensure connection
+                            await this.runtime.ensureConnection(
+                                userUUID,
+                                roomUUID,
+                            );
+
+                            // Create content
+                            const content: Content = {
+                                text: message.message,
+                            };
+
+                            // Create memory for the message
+                            const memory: Memory = {
+                                id: messageUUID,
+                                agentId: agentUUID,
+                                userId: userUUID,
+                                roomId: roomUUID,
+                                content,
+                                createdAt: message.date * 1000,
+                                embedding: getEmbeddingZeroVector(),
+                            };
+
+                            // Create memory
+                            await this.runtime.messageManager.createMemory(memory);
+
+                            // Update state with the new memory
+                            let state = await this.runtime.composeState(
+                                memory,
+                                {
+                                    news: message.message
+                                }
+                            ); 2
+
+                            // Generate response
+                            const context = composeContext({
+                                state,
+                                template: getTelegramAccountRepostHandlerTemplate(this.account),
+                            });
+
+                            const response = await generateText({
+                                runtime: this.runtime,
+                                context,
+                                modelClass: ModelClass.LARGE
+                            })
+
+                            elizaLogger.log(`Response received :\n ${response}`)
+
+                            if (response !== 'Processed') {
+
+                                // Execute callback to send messages and log memories
+                                const sentMessage = await this.client.sendMessage(
+                                    cryptoast_channel.id,
+                                    {
+                                        message: response,
+                                        parseMode: 'markdown',
+                                    }
+                                );
+                                elizaLogger.log(`Message sent to ${cryptoast_channel.name}`)
+                            }
+                        }
+                    }
+                } catch (error) {
+                    elizaLogger.error(`❌ Erreur lors de la récupération du message pour ${channel.title}:`, error);
+                }
+            }, 5000);
+        } else {
+            elizaLogger.error('Cryptoast channel not found')
+        }
+    }
+
+    private async getCryptoastChannel() {
+        const CRYPTOAST_CHANNEL_NAME = 'channeltestcryptoast';
+
+        const dialogs = await this.client.getDialogs();
+        const channels = dialogs.filter(d => d.isChannel);
+
+        // 🔥 Trouver le canal Cryptoast
+        const cryptoast_channel = channels.find(
+            (channel) => channel.title === CRYPTOAST_CHANNEL_NAME || channel.name === CRYPTOAST_CHANNEL_NAME
+        );
+
+        if (!cryptoast_channel) {
+            console.error(`❌ Le canal "${CRYPTOAST_CHANNEL_NAME}" n'a pas été trouvé.`);
+            return null; // ✅ Retourne `null` si le canal n'existe pas
+        } else {
+            console.log(`✅ Canal trouvé : ${cryptoast_channel.title} (ID: ${cryptoast_channel.id})`);
+            return cryptoast_channel; // ✅ Retourne le canal trouvé
+        }
+    }
+
+
+    private async getNewsChannels(): Promise<Dialog[]> {
+        const CHANNEL_NAMES = ['infinityhedge', /* 'Watcher Guru','Zoomer News','Wu Blockchain','Leviathan News' */];
+
+        const dialogs = await this.client.getDialogs();
+        const channels = dialogs.filter(d => d.isChannel);
+
+        // Filter channels
+        const newsChannels = channels.filter(
+            (channel) => CHANNEL_NAMES.includes(channel.title) || CHANNEL_NAMES.includes(channel.name)
+        );
+
+        if (newsChannels.length === 0) {
+            console.error(`❌ Aucun des canaux "${CHANNEL_NAMES.join(', ')}" n'a été trouvé.`);
+            return []; // ✅ Retourne une liste vide si aucun canal n'est trouvé
+        } else {
+            console.log(`✅ Canaux trouvés : ${newsChannels.map(c => c.title).join(', ')}`);
+            return newsChannels; // ✅ Retourne la liste des canaux trouvés
+        }
+    }
+
+    private getNewMessagesFromChannels(channels: Dialog[])
 }
