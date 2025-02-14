@@ -89,5 +89,5 @@ News:
 {{news}}
 
 List of processed news :
-{{processNews}}
+{{processedNews}}
 `;
