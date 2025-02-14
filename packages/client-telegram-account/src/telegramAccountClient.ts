@@ -499,6 +499,4 @@ export class TelegramAccountClient {
             return newsChannels; // ✅ Retourne la liste des canaux trouvés
         }
     }
-
-    private getNewMessagesFromChannels(channels: Dialog[])
 }
