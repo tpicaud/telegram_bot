@@ -44,7 +44,7 @@ Telegram ID: ${account.id}
 
 //////////////////////
 
-export const telegramAccountRepostHandlerTemplate = `
+const telegramAccountRepostHandlerTemplate = `
 # About {{agentName}}:
 {{telegramAccountInfo}}
 {{bio}}
@@ -81,3 +81,13 @@ Last name: ${account.lastName}
 Telegram ID: ${account.id}
     `);
 }
+
+export const telegramAccountIsNewNewsTemplate = `
+# INSTRUCTIONS: Determine if the news is a processed news or not. Do not comment. Just respond with "TRUE" or "FALSE".
+
+News:
+{{news}}
+
+List of processed news :
+{{processNews}}
+`;

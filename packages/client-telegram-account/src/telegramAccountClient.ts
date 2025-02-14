@@ -21,7 +21,7 @@ import { NewMessage, NewMessageEvent } from "telegram/events";
 import { Entity } from "telegram/define";
 import input from "input";
 import bigInt from "big-integer";
-import { getTelegramAccountMessageHandlerTemplate, getTelegramAccountRepostHandlerTemplate, telegramAccountRepostHandlerTemplate } from "./templates.ts"
+import { getTelegramAccountMessageHandlerTemplate, getTelegramAccountRepostHandlerTemplate, telegramAccountIsNewNewsTemplate } from "./templates.ts"
 import { escapeMarkdown, splitMessage } from "./utils.ts";
 import { Dialog } from "telegram/tl/custom/dialog";
 
@@ -45,7 +45,12 @@ export class TelegramAccountClient {
 
         try {
             await this.initializeAccount();
-            this.setupEventsHandlers();
+
+            // News handling
+            this.listenToNews()
+
+            // Enable response to users
+            // this.setupEventsHandlers();
 
             elizaLogger.success(`✅ Telegram account client successfully started for character ${this.runtime.character.name}`);
         } catch (error) {
@@ -82,8 +87,7 @@ export class TelegramAccountClient {
     }
 
     private setupEventsHandlers(): void {
-        //this.newMessageHandler();
-        this.newNewsHandler();
+        this.newMessageHandler();
     }
 
     private newMessageHandler() {
@@ -346,8 +350,7 @@ export class TelegramAccountClient {
     // Cryptoast Repost //
     //////////////////////
 
-
-    private async newNewsHandler() {
+    private async listenToNews() {
 
         const repost_channel = await this.getCryptoastChannel()
         const listening_channels = await this.getNewsChannels();
@@ -363,17 +366,18 @@ export class TelegramAccountClient {
 
                 const newMessages: Api.Message[] = await this.getNewMessagesFromChannels(listening_channels, lastMessageIds)
 
-
                 if (newMessages.length > 0) {
                     for (const message of newMessages) {
+
                         elizaLogger.log(`New news ${message.id}`)
-                        const isANewNews = this.isANewNews(message.message)
+                        const isANewNews = this.isANewNews(message)
+
                         if (isANewNews) {
                             try {
                                 const sender = await message.getSender()
 
                                 elizaLogger.info(`Processing news from :`, {
-                                    sender: sender.toJSON(),
+                                    sender: sender.id,
                                     message: message.message,
                                 });
 
@@ -410,13 +414,13 @@ export class TelegramAccountClient {
                                 // Create memory
                                 await this.runtime.messageManager.createMemory(memory);
 
-                                // Update state with the new memory
+                                // Compose state with the new memory
                                 let state = await this.runtime.composeState(
                                     memory,
                                     {
                                         news: message.message
                                     }
-                                ); 2
+                                );
 
                                 // Generate response
                                 const context = composeContext({
@@ -461,7 +465,7 @@ export class TelegramAccountClient {
     }
 
     private async getCryptoastChannel() {
-        const CRYPTOAST_CHANNEL_NAME = 'channeltestcryptoast';
+        const CRYPTOAST_CHANNEL_NAME = 'Cryptoast News';
 
         const dialogs = await this.client.getDialogs();
         const channels = dialogs.filter(d => d.isChannel);
@@ -482,7 +486,7 @@ export class TelegramAccountClient {
 
 
     private async getNewsChannels(): Promise<Dialog[]> {
-        const CHANNEL_NAMES = ['infinityhedge', 'channeltestcryptoast2' /* 'Watcher Guru','Zoomer News','Wu Blockchain','Leviathan News' */];
+        const CHANNEL_NAMES = ['News Channel', /* 'Watcher Guru','Zoomer News','Wu Blockchain','Leviathan News' */];
 
         const dialogs = await this.client.getDialogs();
         const channels = dialogs.filter(d => d.isChannel);
@@ -527,8 +531,73 @@ export class TelegramAccountClient {
         return newMessages;
     }
 
-    private async isANewNews(news: string): Promise<boolean> {
-        // TODO Complete this function
-        return true
+    private async isANewNews(news: Api.Message): Promise<boolean> {
+
+        // Build UUID
+        const userUUID = stringToUuid(`tg-${this.account.id.toString()}`) as UUID;
+        const roomUUID = stringToUuid(`processedNews` + "-" + this.runtime.agentId) as UUID;
+        const messageUUID = stringToUuid(`tg-message-${roomUUID}-${news.id.toString()}` + "-" + this.runtime.agentId) as UUID;
+        const agentUUID = this.runtime.agentId;
+
+        // retrieve processedNews
+        const processNewsMemories = await this.runtime.messageManager.getMemories({
+            roomId: roomUUID
+        })
+        const processedNews = processNewsMemories.map((processedNewsMemory) => processedNewsMemory.content.text);
+        elizaLogger.log(`Number of processed News: ${processedNews.length}`, {
+            processedNews
+        });
+        const formatedProcessedNews = processedNews
+            .map((news, index) => `${index + 1}: ${news}`).join("\n");
+
+        // pre process llm format
+        // Create content
+        const newsFormated = news.message.replace(/\s+/g, ' ').trim()
+        const content: Content = {
+            text: newsFormated,
+        };
+
+        // Create memory for the message
+        const memory: Memory = {
+            id: messageUUID,
+            agentId: agentUUID,
+            userId: userUUID,
+            roomId: roomUUID,
+            content,
+            createdAt: news.date * 1000,
+            embedding: getEmbeddingZeroVector(),
+        };
+
+        // Compose state with the new memory
+        let state = await this.runtime.composeState(
+            memory,
+            {
+                news: news.message,
+                processedNews: formatedProcessedNews
+            }
+        );
+
+        // ask llm if news is already processed or not
+        const context = composeContext({
+            state,
+            template: telegramAccountIsNewNewsTemplate,
+        });
+
+        elizaLogger.log(`Context for LLM:\n ${context}`)
+
+        const response = await generateText({
+            runtime: this.runtime,
+            context,
+            modelClass: ModelClass.LARGE
+        })
+
+        // if already processed, continue, else create memory
+        if (response.trim() === 'FALSE') {
+            elizaLogger.log(`News ${news.id} is considerd as news`)
+            await this.runtime.messageManager.createMemory(memory)
+            return true;
+        }
+
+        return false
     }
 }
