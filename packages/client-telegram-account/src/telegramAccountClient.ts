@@ -367,10 +367,11 @@ export class TelegramAccountClient {
                 const newMessages: Api.Message[] = await this.getNewMessagesFromChannels(listening_channels, lastMessageIds)
 
                 if (newMessages.length > 0) {
+                    elizaLogger.log(`Found ${newMessages.length} candidate news`)
                     for (const message of newMessages) {
 
-                        elizaLogger.log(`New news ${message.id}`)
-                        const isANewNews = this.isANewNews(message)
+                        elizaLogger.log(`Candidate news ${message.id}`)
+                        const isANewNews = await this.isANewNews(message)
 
                         if (isANewNews) {
                             try {
@@ -436,7 +437,7 @@ export class TelegramAccountClient {
 
                                 elizaLogger.log(`Response received :\n ${response}`)
 
-                                if (response !== 'Processed') {
+                                if (response !== 'telegramAccountIsNewNewsTemplateIGNORE') {
 
                                     // Execute callback to send messages and log memories
                                     const sentMessage = await this.client.sendMessage(
@@ -486,7 +487,7 @@ export class TelegramAccountClient {
 
 
     private async getNewsChannels(): Promise<Dialog[]> {
-        const CHANNEL_NAMES = ['News Channel', /* 'Watcher Guru','Zoomer News','Wu Blockchain','Leviathan News' */];
+        const CHANNEL_NAMES = ['News Channel','infinityhedge','Watcher Guru','Zoomer News','Wu Blockchain News','Leviathan News', 'Tree News'];
 
         const dialogs = await this.client.getDialogs();
         const channels = dialogs.filter(d => d.isChannel);
@@ -518,7 +519,7 @@ export class TelegramAccountClient {
                     // Vérifier si le message a déjà été traité
                     const lastMessageId = lastMessageIds.get(channel.id) || 0;
 
-                    if (message.id > lastMessageId) { // Si c'est un nouveau message
+                    if (message.message.length > 0 && message.id > lastMessageId) { // Si c'est un nouveau message
                         lastMessageIds.set(channel.id, message.id); // Met à jour l'ID du dernier message
                         newMessages.push(message); // Ajoute le message à la liste des nouveaux
                     }
@@ -533,29 +534,28 @@ export class TelegramAccountClient {
 
     private async isANewNews(news: Api.Message): Promise<boolean> {
 
-        // Build UUID
-        const userUUID = stringToUuid(`tg-${this.account.id.toString()}`) as UUID;
-        const roomUUID = stringToUuid(`processedNews` + "-" + this.runtime.agentId) as UUID;
-        const messageUUID = stringToUuid(`tg-message-${roomUUID}-${news.id.toString()}` + "-" + this.runtime.agentId) as UUID;
-        const agentUUID = this.runtime.agentId;
+        const cryptoast_channel = await this.getCryptoastChannel()
 
         // retrieve processedNews
-        const processNewsMemories = await this.runtime.messageManager.getMemories({
-            roomId: roomUUID
-        })
-        const processedNews = processNewsMemories.map((processedNewsMemory) => processedNewsMemory.content.text);
-        elizaLogger.log(`Number of processed News: ${processedNews.length}`, {
-            processedNews
-        });
+        elizaLogger.log(`Fetching last processed news from ${cryptoast_channel.name}`)
+        const processedNews = await this.getLastProcessedNewsFromChannel(cryptoast_channel)
+        elizaLogger.log(`Found ${processedNews.length} processed news last 24h`)
+
+        // Format news
         const formatedProcessedNews = processedNews
             .map((news, index) => `${index + 1}: ${news}`).join("\n");
+        const formatedNews = this.cleanText(news.message)
 
-        // pre process llm format
         // Create content
-        const newsFormated = news.message.replace(/\s+/g, ' ').trim()
         const content: Content = {
-            text: newsFormated,
+            text: formatedNews,
         };
+
+        // Build UUID
+        const userUUID = stringToUuid(`tg-${this.account.id.toString()}`) as UUID;
+        const roomUUID = stringToUuid(`tg-processedNews` + "-" + this.runtime.agentId) as UUID;
+        const messageUUID = stringToUuid(`tg-message-${roomUUID}-${news.id.toString()}` + "-" + this.runtime.agentId) as UUID;
+        const agentUUID = this.runtime.agentId;
 
         // Create memory for the message
         const memory: Memory = {
@@ -572,7 +572,7 @@ export class TelegramAccountClient {
         let state = await this.runtime.composeState(
             memory,
             {
-                news: news.message,
+                news: formatedNews,
                 processedNews: formatedProcessedNews
             }
         );
@@ -593,11 +593,34 @@ export class TelegramAccountClient {
 
         // if already processed, continue, else create memory
         if (response.trim() === 'FALSE') {
-            elizaLogger.log(`News ${news.id} is considerd as news`)
+            elizaLogger.log(`News ${news.id} is considerd as a new news`)
             await this.runtime.messageManager.createMemory(memory)
             return true;
         }
 
         return false
     }
+
+    private async getLastProcessedNewsFromChannel(channel: Dialog): Promise<string[]> {
+        const messages: string[] = [];
+        const twentyFourHoursAgo = Math.floor(Date.now() / 1000) - (24 * 60 * 60);
+    
+        try {
+            const fetchedMessages = await this.client.getMessages(channel.id, { limit: 100 });
+    
+            for (const message of fetchedMessages) {
+                if (message.date && message.date >= twentyFourHoursAgo) {
+                    messages.push(this.cleanText(message.message));
+                }
+            }
+        } catch (error) {
+            console.error(`❌ Error while retrieving last processed news ${channel.title}:`, error);
+        }
+    
+        return messages;
+    }
+    
+    private cleanText(text: string): string {
+        return text.trim().replace(/\s+/g, ' ');
+    }    
 }

@@ -61,16 +61,13 @@ const telegramAccountRepostHandlerTemplate = `
 # News
 {{news}}
 
-# Processed news
-{{processedNews}}
-
 # Task: Translate the News in french in the voice, style and perspective of {{agentName}}. You are replying on Telegram.
-If the news is a processed news, respond with 'Processed' ONLY.
-If the news is just a url, or a content that you cannot translate, respond with 'Processed' ONLY.
-Do not add any context, just translate the message.
+If the news is just a url, or a content that you cannot translate, response must be 'IGNORE'.
+Do not add any context, just translate the news. If the news is more than 400 characters, you are allowed to synthesize it
 Start the message with an appropriate emojis.
 No hashtags.
-Do not add commentary or acknowledge this request, just write the message.
+Do not add commentary or acknowledge this request, just write the response.
+If the response is 'IGNORE', just response with 'IGNORE' word. Do NOT add any other words or sentence.
 `;
 
 export function getTelegramAccountRepostHandlerTemplate(account: Api.User): string {
@@ -83,11 +80,16 @@ Telegram ID: ${account.id}
 }
 
 export const telegramAccountIsNewNewsTemplate = `
-# INSTRUCTIONS: Determine if the news is a processed news or not. Do not comment. Just respond with "TRUE" or "FALSE".
+# About {{agentName}}:
+{{telegramAccountInfo}}
+{{bio}}
+{{lore}}
 
-News:
+# TASK: You are {{agentName}}. {{agentName}} is getting news from Telegram channels. Determine if the current news is already processed. Do not comment. Just respond with "TRUE" or "FALSE".
+
+# Current News:
 {{news}}
 
-List of processed news :
+# List of already processed news :
 {{processedNews}}
 `;
