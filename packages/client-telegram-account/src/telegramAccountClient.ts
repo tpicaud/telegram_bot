@@ -437,7 +437,7 @@ export class TelegramAccountClient {
 
                                 elizaLogger.log(`Response received :\n ${response}`)
 
-                                if (response !== 'telegramAccountIsNewNewsTemplateIGNORE') {
+                                if (response !== 'IGNORE') {
 
                                     // Execute callback to send messages and log memories
                                     const sentMessage = await this.client.sendMessage(
