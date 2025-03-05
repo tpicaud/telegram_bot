@@ -58,7 +58,8 @@ const telegramAccountRepostHandlerTemplate = `
 # TASK: 
 Translate the **news** into **French** in the voice, style, and perspective of {{agentName}}.  
 - You are replying on **Telegram**.
-- Feel free to add line break if the news is too long.
+- Feel free to add line breaks.
+- If the news is all in uppercase, translate the sentences in lowercase as a usual sentence.
 - If the **news** is just a **URL** or content that cannot be translated, respond with **"IGNORE"**.
 - Do **not** translate poper nouns or uppercase words (e.g., DOGE, BTC, Eiffel, Strategy etc.) must remain the same in their original form.
 - If you **are unsure** about the translation of a word, **do not translate it**—leave it as-is in its original form.

@@ -469,7 +469,7 @@ export class TelegramAccountClient {
     }
 
     private async getCryptoastChannel() {
-        const CRYPTOAST_CHANNEL_NAME = 'Cryptoast News Test';
+        const CRYPTOAST_CHANNEL_NAME = 'Cryptoast News';
 
         const dialogs = await this.client.getDialogs();
         const channels = dialogs.filter(d => d.isChannel);
@@ -490,7 +490,7 @@ export class TelegramAccountClient {
 
 
     private async getNewsChannels(): Promise<Dialog[]> {
-        const CHANNEL_NAMES = ['News Channel', 'infinityhedge', 'Watcher Guru', 'Zoomer News', 'Wu Blockchain News', 'Tree News'];
+        const CHANNEL_NAMES = ['News Channel', 'News Channel 2', 'infinityhedge', 'Watcher Guru', 'Zoomer News', 'Wu Blockchain News', 'Tree News'];
 
         const dialogs = await this.client.getDialogs();
         const channels = dialogs.filter(d => d.isChannel);
