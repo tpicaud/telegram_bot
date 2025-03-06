@@ -21,10 +21,10 @@ import { NewMessage, NewMessageEvent } from "telegram/events";
 import { Entity } from "telegram/define";
 import input from "input";
 import bigInt from "big-integer";
-import { getTelegramAccountMessageHandlerTemplate, getTelegramAccountRepostHandlerTemplate, telegramAccountIsNewsTemplate, telegramAccountIsUnprocessedNewsTemplate } from "./templates.ts"
+import { getTelegramAccountMessageHandlerTemplate, translateNewsTemplate, isValidNewsTemplate, isUnprocessedNewsTemplate } from "./templates.ts"
 import { escapeMarkdown, splitMessage } from "./utils.ts";
 import { Dialog } from "telegram/tl/custom/dialog";
-import { returnBigInt } from "telegram/Helpers";
+import fs from 'fs/promises';
 
 export class TelegramAccountClient {
     private runtime: IAgentRuntime;
@@ -360,8 +360,11 @@ export class TelegramAccountClient {
             elizaLogger.info(`📡 Listening to ${listening_channels.length} channels.`);
             elizaLogger.info(`Reposting news on ${repost_channel.name}`)
 
-            // TODO replace this by Memory management
+            // Stockage des derniers messages des channels
             const lastMessageIds = new Map<number, number>();
+
+            // Charger les mots à ne pas traduire
+            const notToBeTranslatedWords = await this.loadNotToTranslateWords()
 
             setInterval(async () => {
 
@@ -420,14 +423,15 @@ export class TelegramAccountClient {
                                 let state = await this.runtime.composeState(
                                     memory,
                                     {
-                                        news: message.message
+                                        news: message.message,
+                                        notToBeTranslatedWords
                                     }
                                 );
 
                                 // Generate response
                                 const context = composeContext({
                                     state,
-                                    template: getTelegramAccountRepostHandlerTemplate(this.account),
+                                    template: translateNewsTemplate,
                                 });
 
                                 elizaLogger.info(`Generating transation for :\n ${message.id}`)
@@ -469,7 +473,7 @@ export class TelegramAccountClient {
     }
 
     private async getCryptoastChannel() {
-        const CRYPTOAST_CHANNEL_NAME = 'Cryptoast News';
+        const CRYPTOAST_CHANNEL_NAME = 'Cryptoast News Test';
 
         const dialogs = await this.client.getDialogs();
         const channels = dialogs.filter(d => d.isChannel);
@@ -490,7 +494,7 @@ export class TelegramAccountClient {
 
 
     private async getNewsChannels(): Promise<Dialog[]> {
-        const CHANNEL_NAMES = ['News Channel', 'News Channel 2', 'infinityhedge', 'Watcher Guru', 'Zoomer News', 'Wu Blockchain News', 'Tree News'];
+        const CHANNEL_NAMES = ['News Channel', 'Phoenix News (Only Important)', 'infinityhedge', 'Watcher Guru', 'Zoomer News', 'Wu Blockchain News', 'Tree News'];
 
         const dialogs = await this.client.getDialogs();
         const channels = dialogs.filter(d => d.isChannel);
@@ -600,7 +604,7 @@ export class TelegramAccountClient {
         // ask llm if news is already processed or not
         const context = composeContext({
             state,
-            template: telegramAccountIsNewsTemplate,
+            template: isValidNewsTemplate,
         });
 
         console.log(context);
@@ -647,7 +651,7 @@ export class TelegramAccountClient {
         // ask llm if news is already processed or not
         const context = composeContext({
             state,
-            template: telegramAccountIsUnprocessedNewsTemplate,
+            template: isUnprocessedNewsTemplate,
         });
 
         console.log(context);
@@ -671,6 +675,18 @@ export class TelegramAccountClient {
         return false
     }
 
+    private async generateResponseFromLLM(context: string): Promise<string> {
+        try {
+            const response = await generateText({
+                runtime: this.runtime,
+                context,
+                modelClass: ModelClass.LARGE
+            });
+            return response;
+        } catch(error) {
+            elizaLogger.error("Error generating response from LLM: ", error);
+        }
+    }
 
     private async getLastProcessedNewsFromChannel(channel: Dialog): Promise<string[]> {
         const messages: string[] = [];
@@ -693,5 +709,22 @@ export class TelegramAccountClient {
 
     private cleanText(text: string): string {
         return text.trim().replace(/\s+/g, ' ');
+    }
+
+    private async loadNotToTranslateWords(): Promise<string[]> {
+        try {
+            const data = await fs.readFile('notToBeTranslatedWords.json', 'utf-8');
+            const jsonData = JSON.parse(data);
+            if (jsonData.notToBeTranslatedWords && Array.isArray(jsonData.notToBeTranslatedWords)) {
+                elizaLogger.info(`📌 Loaded ${jsonData.notToBeTranslatedWords.length} words to not translate.`);
+                return jsonData.notToBeTranslatedWords;
+            } else {
+                elizaLogger.warn("⚠️ Invalid format for 'notToBeTranslatedWords.json'. Expected an array.");
+                return [];
+            }
+        } catch (error) {
+            elizaLogger.error("❌ Error loading 'notToBeTranslatedWords.json':", error);
+            return [];
+        }
     }
 }

@@ -43,48 +43,89 @@ Telegram ID: ${account.id}
 }
 
 //////////////////////
+//////////////////////
 
-const telegramAccountRepostHandlerTemplate = `
+export const translateNewsTemplate = `
 # About {{agentName}}:
 {{telegramAccountInfo}}
 {{bio}}
 {{lore}}
 
-{{providers}}
+# Words not to be translated
+{{notToBeTranslatedWords}}
 
 # News
 {{news}}
 
-# TASK: 
-Translate the **news** into **French** in the voice, style, and perspective of {{agentName}}.  
-- You are replying on **Telegram**.
-- Feel free to add line breaks.
-- If the news is all in uppercase, translate the sentences in lowercase as a usual sentence.
-- If the **news** is just a **URL** or content that cannot be translated, respond with **"IGNORE"**.
-- Do **not** translate poper nouns or uppercase words (e.g., DOGE, BTC, Eiffel, Strategy etc.) must remain the same in their original form.
-- If you **are unsure** about the translation of a word, **do not translate it**—leave it as-is in its original form.
-- If the news exceeds **400 characters**, synthesize the content **while retaining the essential meaning**, but ensure the translation remains **faithful** to the original.
-- Start the message with an appropriate **emoji** related to the news.
-- Do **not** include hashtags, commentary, or additional context.
-- Do **not** acknowledge this request or explain the process. Just **write** the translation.
-- If you are unable to process or translate the message, simply respond with the word **"IGNORE"**—**no extra words**.
+# TASK:  
+Translate the **news** into **French**, maintaining the voice, tone, and perspective of {{agentName}}.  
 
-### Example:
-- If the news contains a URL or cannot be translated: **"IGNORE"**  
-- If the news contains uppercase words like **DOGE**, translate them as **DOGE**.
-- If the news is too long, synthesize it but preserve the key points and exact wording.
-`;
+### **Translation Rules:**  
+✅ **Formatting**: Add line breaks where necessary for readability.  
+✅ **Capitalization**:  
+   - If the original news is **entirely uppercase**, translate it in lowercase with normal capitalization.  
+   - **Proper nouns, acronyms, and tickers** (e.g., DOGE, BTC, SEC, IMF) must remain unchanged. 
+✅ **Preserve specific words**:  
+   - **Do not translate words listed in** "Words not to be translated"—keep them exactly as they are.  
+✅ **Summarization**:   
+   - If the news exceeds **200 characters**, summarize while **preserving key information** and **ensuring faithfulness** to the original meaning.  
+✅ **Uncertain words?** **Do not translate them**—leave them as-is.  
+✅ **Start with an appropriate emoji related to the news.**  
+❌ **Do not include hashtags, commentary, or additional context.**  
+❌ **Do not acknowledge the request or explain the translation.**  
+❌ **Do not translate or include introductory elements such as "JUST IN", "BREAKING", "LASTEST", etc.**
+❌ **Do not translate or include URLs**
+❌ **If the news cannot be translated or is composed only of a URL, reply with "IGNORE"—no extra words.**  
 
-export function getTelegramAccountRepostHandlerTemplate(account: Api.User): string {
-    return telegramAccountRepostHandlerTemplate.replace('{{telegramAccountInfo}}', `
-Username: @${account.username}
-First name: ${account.firstName}
-Last name: ${account.lastName}
-Telegram ID: ${account.id}
-    `);
-}
+---
 
-export const telegramAccountIsNewsTemplate = `
+### **Example Responses:**  
+
+#### **1️⃣ Standard Translation**  
+📰 **Original News:**  
+> "BREAKING: BITCOIN REACHED A NEW ALL-TIME HIGH! 🚀 - WSJ."
+
+✅ **Correct Translation:**  
+> 🚀 Bitcoin atteint un nouveau record historique !.  
+
+❌ **Incorrect Translation:**  
+> 🚀 **BREAKING: Le bitcoin a atteint un nouveau sommet historique !** (⚠ "all-time high" should be "record historique" and "BREAKING" should not be added)
+
+---
+
+#### **2️⃣ Handling Uppercase Text**  
+📰 **Original News:**  
+> "BREAKING: ETHEREUM MERGE SUCCESSFUL. THE NETWORK IS NOW PROOF OF STAKE."  
+
+✅ **Correct Translation:**  
+> 🔥 **Le Merge d'Ethereum est réussie. Le réseau fonctionne désormais en proof of stake.**  
+
+❌ **Incorrect Translation:**  
+> 🔥 **ALERTE : La fusion d'ethereum est réussie. Le réseau est maintenant en preuve d'enjeu.** (⚠ "Ethereum Merge" should not be translated and "ALERTE" should not be added)  
+
+---
+
+#### **3️⃣ Summarization (if too long)**  
+📰 **Original News:**  
+> "The SEC has announced a new investigation into crypto exchanges. Regulators suspect manipulation in BTC trading, which could lead to stricter regulations."  
+
+✅ **Correct Summarization:**  
+> ⚖️ **The SEC investigates crypto exchanges over suspected BTC manipulation. Stricter regulations may follow.**  
+
+❌ **Incorrect Translation:**  
+> ⚖️ **The SEC is launching an investigation into cryptocurrency platforms due to suspected manipulation in the Bitcoin market, which could result in new regulations.** (⚠ Too long, not synthesized)  
+
+---
+
+#### **4️⃣ "IGNORE" Case**  
+📰 **Original News:**  
+> "https://example.com/latest-news-about-crypto"  
+
+✅ **Response:**  
+> **IGNORE**  
+`
+
+export const isValidNewsTemplate = `
 # About {{agentName}}:  
 {{telegramAccountInfo}}  
 {{bio}}  
@@ -108,6 +149,7 @@ Respond strictly with **"TRUE"** or **"FALSE"**:
 ⚠ **Do not add extra commentary, opinions, or unnecessary text.**  
 
 ## Conditions:  
+- It is not composed only of a **URL**.
 - It does **not** contain promotional content, advertisements, except if it is a quote or for an airdrop.  
 - It does **not** contain calls to action or explicit promotions (e.g., "Read more," "Check out our latest," "Visit our website"), except if it is for an airdrop.  
 - It is **neutral** in tone (i.e., factual, not opinion-based or emotionally charged), except if it is a quote.  
@@ -121,7 +163,7 @@ Respond strictly with **"TRUE"** or **"FALSE"**:
 ✅ If the message violates any condition: "FALSE - [reason]"
 `;
 
-export const telegramAccountIsUnprocessedNewsTemplate = `
+export const isUnprocessedNewsTemplate = `
 # About {{agentName}}:  
 {{telegramAccountInfo}}  
 {{bio}}  
