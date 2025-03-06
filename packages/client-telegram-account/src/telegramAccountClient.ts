@@ -21,10 +21,10 @@ import { NewMessage, NewMessageEvent } from "telegram/events";
 import { Entity } from "telegram/define";
 import input from "input";
 import bigInt from "big-integer";
-import { getTelegramAccountMessageHandlerTemplate, getTelegramAccountRepostHandlerTemplate, telegramAccountRepostHandlerTemplate } from "./templates.ts"
+import { getTelegramAccountMessageHandlerTemplate, getTelegramAccountRepostHandlerTemplate, telegramAccountIsNewsTemplate, telegramAccountIsUnprocessedNewsTemplate } from "./templates.ts"
 import { escapeMarkdown, splitMessage } from "./utils.ts";
-import { EditedMessage } from "telegram/events/EditedMessage";
 import { Dialog } from "telegram/tl/custom/dialog";
+import { returnBigInt } from "telegram/Helpers";
 
 export class TelegramAccountClient {
     private runtime: IAgentRuntime;
@@ -46,7 +46,12 @@ export class TelegramAccountClient {
 
         try {
             await this.initializeAccount();
-            this.setupEventsHandlers();
+
+            // News handling
+            this.listenToNews()
+
+            // Enable response to users
+            // this.setupEventsHandlers();
 
             elizaLogger.success(`✅ Telegram account client successfully started for character ${this.runtime.character.name}`);
         } catch (error) {
@@ -83,8 +88,7 @@ export class TelegramAccountClient {
     }
 
     private setupEventsHandlers(): void {
-        //this.newMessageHandler();
-        this.newNewsHandler();
+        this.newMessageHandler();
     }
 
     private newMessageHandler() {
@@ -347,111 +351,116 @@ export class TelegramAccountClient {
     // Cryptoast Repost //
     //////////////////////
 
+    private async listenToNews() {
 
-    private async newNewsHandler() {
+        const repost_channel = await this.getCryptoastChannel()
+        const listening_channels = await this.getNewsChannels();
 
-        const channels = await this.getNewsChannels();
-        const cryptoast_channel = await this.getCryptoastChannel()
+        if (repost_channel && listening_channels.length > 0) {
+            elizaLogger.info(`📡 Listening to ${listening_channels.length} channels.`);
+            elizaLogger.info(`Reposting news on ${repost_channel.name}`)
 
-        if (cryptoast_channel) {
-            console.log(`📡 Abonné à ${channels.length} canaux.`);
-
-            let currentIndex = 0;
-            let lastMessageID: number;
+            // TODO replace this by Memory management
+            const lastMessageIds = new Map<number, number>();
 
             setInterval(async () => {
-                if (channels.length === 0) return;
 
-                const channel = channels[currentIndex % channels.length]; // Sélectionne un canal à la fois
-                //currentIndex++;
+                const newMessages: Api.Message[] = await this.getNewMessagesFromChannels(listening_channels, lastMessageIds)
 
-                try {
-                    const messages = await this.client.getMessages(channel.id, { limit: 1 }); // Récupère le dernier message
-                    if (messages.length > 0) {
-                        const message = messages[0]
-                        const sender = await message.getSender();
+                if (newMessages.length > 0) {
+                    elizaLogger.info(`Found ${newMessages.length} candidate news`)
+                    for (const message of newMessages) {
 
+                        elizaLogger.info(`Candidate news ${message.id}`, {
+                            message: message.message,
+                        })
 
+                        const isValidNews = await this.isValidNews(message)
 
-                        elizaLogger.info(`Message from [${channel.title}]:`, {
-                            message_id: message.id,
-                            //message
-                        });
+                        if (isValidNews) {
+                            try {
 
-                        // Check if it is a new message
-                        if (lastMessageID !== message.id) {
-                            elizaLogger.log(`This is a new message, start processing...`)
-                            lastMessageID = message.id;
+                                elizaLogger.info(`✅ Message ${message.id} consider as news`);
 
-                            // Build UUIDs
-                            const userUUID = stringToUuid(`tg-${sender.id.toString()}`) as UUID;
-                            const roomUUID = stringToUuid(`tg-${channel.id.toString()}` + "-" + this.runtime.agentId) as UUID;
-                            const messageUUID = stringToUuid(`tg-message-${roomUUID}-${message.id.toString()}` + "-" + this.runtime.agentId) as UUID;
-                            const agentUUID = this.runtime.agentId;
+                                const channel = message.chat
+                                const sender = await message.getSender()
 
-                            // Ensure connection
-                            await this.runtime.ensureConnection(
-                                userUUID,
-                                roomUUID,
-                            );
+                                // Build UUIDs
+                                const userUUID = stringToUuid(`tg-${sender.id.toString()}`) as UUID;
+                                const roomUUID = stringToUuid(`tg-${channel.id.toString()}` + "-" + this.runtime.agentId) as UUID;
+                                const messageUUID = stringToUuid(`tg-message-${roomUUID}-${message.id.toString()}` + "-" + this.runtime.agentId) as UUID;
+                                const agentUUID = this.runtime.agentId;
 
-                            // Create content
-                            const content: Content = {
-                                text: message.message,
-                            };
+                                // Ensure connection
+                                await this.runtime.ensureConnection(
+                                    userUUID,
+                                    roomUUID,
+                                );
 
-                            // Create memory for the message
-                            const memory: Memory = {
-                                id: messageUUID,
-                                agentId: agentUUID,
-                                userId: userUUID,
-                                roomId: roomUUID,
-                                content,
-                                createdAt: message.date * 1000,
-                                embedding: getEmbeddingZeroVector(),
-                            };
+                                // Create content
+                                const content: Content = {
+                                    text: message.message,
+                                };
 
-                            // Create memory
-                            await this.runtime.messageManager.createMemory(memory);
+                                // Create memory for the message
+                                const memory: Memory = {
+                                    id: messageUUID,
+                                    agentId: agentUUID,
+                                    userId: userUUID,
+                                    roomId: roomUUID,
+                                    content,
+                                    createdAt: message.date * 1000,
+                                    embedding: getEmbeddingZeroVector(),
+                                };
 
-                            // Update state with the new memory
-                            let state = await this.runtime.composeState(
-                                memory,
-                                {
-                                    news: message.message
-                                }
-                            ); 2
+                                // Create memory
+                                await this.runtime.messageManager.createMemory(memory);
 
-                            // Generate response
-                            const context = composeContext({
-                                state,
-                                template: getTelegramAccountRepostHandlerTemplate(this.account),
-                            });
-
-                            const response = await generateText({
-                                runtime: this.runtime,
-                                context,
-                                modelClass: ModelClass.LARGE
-                            })
-
-                            elizaLogger.log(`Response received :\n ${response}`)
-
-                            if (response !== 'Processed') {
-
-                                // Execute callback to send messages and log memories
-                                const sentMessage = await this.client.sendMessage(
-                                    cryptoast_channel.id,
+                                // Compose state with the new memory
+                                let state = await this.runtime.composeState(
+                                    memory,
                                     {
-                                        message: response,
-                                        parseMode: 'markdown',
+                                        news: message.message
                                     }
                                 );
-                                elizaLogger.log(`Message sent to ${cryptoast_channel.name}`)
+
+                                // Generate response
+                                const context = composeContext({
+                                    state,
+                                    template: getTelegramAccountRepostHandlerTemplate(this.account),
+                                });
+
+                                elizaLogger.info(`Generating transation for :\n ${message.id}`)
+
+                                const response = await generateText({
+                                    runtime: this.runtime,
+                                    context,
+                                    modelClass: ModelClass.LARGE
+                                })
+
+                                elizaLogger.info(`Translation received :\n ${response}`)
+
+                                if (!response.includes('IGNORE')) {
+
+                                    // Execute callback to send messages and log memories
+                                    const sentMessage = await this.client.sendMessage(
+                                        repost_channel.id,
+                                        {
+                                            message: response,
+                                            parseMode: 'markdown',
+                                        }
+                                    );
+                                    elizaLogger.info(`✅ Message sent to ${repost_channel.name}`)
+                                } else {
+                                    elizaLogger.error(`Cannot translate message ${message.id}`)
+                                }
+                            } catch (error) {
+                                elizaLogger.error(`❌ Erreur lors de la gestion du message pour :`, error);
                             }
+                        } else {
+                            elizaLogger.info(`⏭️ Message ${message.id} not a news or already processed, skipping`)
                         }
                     }
-                } catch (error) {
-                    elizaLogger.error(`❌ Erreur lors de la récupération du message pour ${channel.title}:`, error);
                 }
             }, 5000);
         } else {
@@ -471,17 +480,17 @@ export class TelegramAccountClient {
         );
 
         if (!cryptoast_channel) {
-            console.error(`❌ Le canal "${CRYPTOAST_CHANNEL_NAME}" n'a pas été trouvé.`);
+            elizaLogger.error(`❌ Le canal "${CRYPTOAST_CHANNEL_NAME}" n'a pas été trouvé.`);
             return null; // ✅ Retourne `null` si le canal n'existe pas
         } else {
-            console.log(`✅ Canal trouvé : ${cryptoast_channel.title} (ID: ${cryptoast_channel.id})`);
+            elizaLogger.log(`✅ Canal trouvé : ${cryptoast_channel.title} (ID: ${cryptoast_channel.id})`);
             return cryptoast_channel; // ✅ Retourne le canal trouvé
         }
     }
 
 
     private async getNewsChannels(): Promise<Dialog[]> {
-        const CHANNEL_NAMES = ['News Channel', /*'infinityhedge','Watcher Guru','Zoomer News','Wu Blockchain','Leviathan News' */];
+        const CHANNEL_NAMES = ['News Channel','infinityhedge','Watcher Guru','Zoomer News','Wu Blockchain'];
 
         const dialogs = await this.client.getDialogs();
         const channels = dialogs.filter(d => d.isChannel);
@@ -498,5 +507,191 @@ export class TelegramAccountClient {
             console.log(`✅ Canaux trouvés : ${newsChannels.map(c => c.title).join(', ')}`);
             return newsChannels; // ✅ Retourne la liste des canaux trouvés
         }
+    }
+
+    private async getNewMessagesFromChannels(channels: Dialog[], lastMessageIds): Promise<Api.Message[]> {
+        const newMessages: Api.Message[] = [];
+
+        for (const channel of channels) {
+            try {
+                const messages = await this.client.getMessages(channel.id, { limit: 1 }); // Récupère le dernier message
+
+                if (messages.length > 0) {
+                    const message = messages[0];
+
+                    // Vérifier si le message a déjà été traité
+                    const lastMessageId = lastMessageIds.get(channel.id) || 0;
+
+                    // TODO fix when receiving message with multiple photos
+
+                    if (message.id > lastMessageId) {
+                        if (message.message && message.message.trim().length > 0) { // Si c'est un nouveau message
+                            lastMessageIds.set(channel.id, message.id); // Met à jour l'ID du dernier message
+                            newMessages.push(message); // Ajoute le message à la liste des nouveaux
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error(`❌ Erreur lors de la récupération du message pour ${channel.title}:`, error);
+            }
+        }
+
+        return newMessages;
+    }
+
+    private async isValidNews(message: Api.Message): Promise<boolean> {
+
+
+        const formatedNews = this.cleanText(message.message)
+
+        // Create content
+        const content: Content = {
+            text: formatedNews,
+        };
+
+        // Build UUID
+        const userUUID = stringToUuid(`tg-${this.account.id.toString()}`) as UUID;
+        const roomUUID = stringToUuid(`tg-processedNews` + "-" + this.runtime.agentId) as UUID;
+        const messageUUID = stringToUuid(`tg-message-${roomUUID}-${message.id.toString()}` + "-" + this.runtime.agentId) as UUID;
+        const agentUUID = this.runtime.agentId;
+
+        // Create memory for the message
+        const memory: Memory = {
+            id: messageUUID,
+            agentId: agentUUID,
+            userId: userUUID,
+            roomId: roomUUID,
+            content,
+            createdAt: message.date * 1000,
+            embedding: getEmbeddingZeroVector(),
+        };
+
+
+        // Check if the news is a real news
+        elizaLogger.info(`Asking LLM to check if message ${message.id} is a news`);
+        const isNews = await this.isNews(memory);
+
+        if (isNews) {
+
+            // Check if the news is not already processed
+            elizaLogger.info(`Asking LLM to check if message ${message.id} is unprocessed`);
+            const isUnprocessed = await this.isUnprocessed(memory);
+            if (isUnprocessed) {
+
+                // The news is valid
+                elizaLogger.log(`News ${message.id} is considerd as valid news`);
+                await this.runtime.messageManager.createMemory(memory);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async isNews(memory: Memory): Promise<boolean> {
+        // Compose state with the new memory
+        let state = await this.runtime.composeState(
+            memory,
+            {
+                message: memory.content.text,
+            }
+        );
+
+        // ask llm if news is already processed or not
+        const context = composeContext({
+            state,
+            template: telegramAccountIsNewsTemplate,
+        });
+
+        console.log(context);
+
+
+        const response = await generateText({
+            runtime: this.runtime,
+            context,
+            modelClass: ModelClass.LARGE
+        })
+
+        elizaLogger.info(`Response from LLM: `, {
+            response
+        })
+
+        // if already processed, continue, else create memory
+        if (response.trim() === 'TRUE') {
+            return true;
+        }
+
+        return false
+    }
+
+    private async isUnprocessed(memory: Memory): Promise<boolean> {
+        const cryptoast_channel = await this.getCryptoastChannel()
+
+        // retrieve processedNews
+        elizaLogger.log(`Fetching last processed news from ${cryptoast_channel.name}`)
+        const processedNews = await this.getLastProcessedNewsFromChannel(cryptoast_channel)
+        elizaLogger.log(`Found ${processedNews.length} processed news last 24h`)
+
+        // Format news
+        const formattedProcessedNews = processedNews.map((news, index) => `${index}: ${this.cleanText(news)}\n`);
+
+        // Compose state with the new memory
+        let state = await this.runtime.composeState(
+            memory,
+            {
+                news: memory.content.text,
+                processedNews: formattedProcessedNews
+            }
+        );
+
+        // ask llm if news is already processed or not
+        const context = composeContext({
+            state,
+            template: telegramAccountIsUnprocessedNewsTemplate,
+        });
+
+        console.log(context);
+
+
+        const response = await generateText({
+            runtime: this.runtime,
+            context,
+            modelClass: ModelClass.LARGE
+        })
+
+        elizaLogger.info(`Response from LLM: `, {
+            response
+        })
+
+        // if already processed, continue, else create memory
+        if (response.trim() === 'TRUE') {
+            return true;
+        }
+
+        return false
+    }
+
+
+    private async getLastProcessedNewsFromChannel(channel: Dialog): Promise<string[]> {
+        const messages: string[] = [];
+        const twentyFourHoursAgo = Math.floor(Date.now() / 1000) - (24 * 60 * 60);
+
+        try {
+            const fetchedMessages = await this.client.getMessages(channel.id, { limit: 100 });
+
+            for (const message of fetchedMessages) {
+                if (message.message && message.date && message.date >= twentyFourHoursAgo) {
+                    messages.push(this.cleanText(message.message));
+                }
+            }
+        } catch (error) {
+            console.error(`❌ Error while retrieving last processed news ${channel.title}:`, error);
+        }
+
+        return messages;
+    }
+
+    private cleanText(text: string): string {
+        return text.trim().replace(/\s+/g, ' ');
     }
 }
