@@ -434,17 +434,15 @@ export class TelegramAccountClient {
                                     template: translateNewsTemplate,
                                 });
 
+                                console.log(context);
+
                                 elizaLogger.info(`Generating transation for :\n ${message.id}`)
 
-                                const response = await generateText({
-                                    runtime: this.runtime,
-                                    context,
-                                    modelClass: ModelClass.LARGE
-                                })
+                                const response = await this.generateResponseFromLLM(context)
 
                                 elizaLogger.info(`Translation received :\n ${response}`)
 
-                                if (!response.includes('IGNORE')) {
+                                if (!response || !response.includes('IGNORE')) {
 
                                     // Execute callback to send messages and log memories
                                     const sentMessage = await this.client.sendMessage(
@@ -473,7 +471,7 @@ export class TelegramAccountClient {
     }
 
     private async getCryptoastChannel() {
-        const CRYPTOAST_CHANNEL_NAME = 'Cryptoast News Test';
+        const CRYPTOAST_CHANNEL_NAME = 'Cryptoast News';
 
         const dialogs = await this.client.getDialogs();
         const channels = dialogs.filter(d => d.isChannel);
@@ -609,12 +607,11 @@ export class TelegramAccountClient {
 
         console.log(context);
 
+        const response = await this.generateResponseFromLLM(context);
 
-        const response = await generateText({
-            runtime: this.runtime,
-            context,
-            modelClass: ModelClass.LARGE
-        })
+        if (!response) {
+            return false
+        }
 
         elizaLogger.info(`Response from LLM: `, {
             response
@@ -656,12 +653,11 @@ export class TelegramAccountClient {
 
         console.log(context);
 
+        const response = await this.generateResponseFromLLM(context)
 
-        const response = await generateText({
-            runtime: this.runtime,
-            context,
-            modelClass: ModelClass.LARGE
-        })
+        if (!response) {
+            return false
+        }
 
         elizaLogger.info(`Response from LLM: `, {
             response
@@ -675,18 +671,32 @@ export class TelegramAccountClient {
         return false
     }
 
-    private async generateResponseFromLLM(context: string): Promise<string> {
-        try {
-            const response = await generateText({
-                runtime: this.runtime,
-                context,
-                modelClass: ModelClass.LARGE
-            });
-            return response;
-        } catch(error) {
-            elizaLogger.error("Error generating response from LLM: ", error);
+    private async generateResponseFromLLM(context: string, maxRetries: number = 4): Promise<string> {
+        const baseDelay = 1000; // Délai initial en millisecondes (1 seconde)
+    
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const response = await generateText({
+                    runtime: this.runtime,
+                    context,
+                    modelClass: ModelClass.LARGE
+                });
+                return response;
+            } catch (error) {
+                if (attempt === maxRetries) {
+                    elizaLogger.error("Max retries reached. Error generating response from LLM: ", error);
+                } else {
+                    // Exponential backoff
+                    const delay = baseDelay * Math.pow(2, attempt - 1); // Délai double à chaque échec
+                    elizaLogger.warn(`Error generating response. Retrying in ${delay / 1000} seconds...`);
+                    
+                    // Attendre le délai avant la prochaine tentative
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
         }
     }
+    
 
     private async getLastProcessedNewsFromChannel(channel: Dialog): Promise<string[]> {
         const messages: string[] = [];
@@ -713,7 +723,7 @@ export class TelegramAccountClient {
 
     private async loadNotToTranslateWords(): Promise<string[]> {
         try {
-            const data = await fs.readFile('notToBeTranslatedWords.json', 'utf-8');
+            const data = await fs.readFile('./packages/client-telegram-account/data/notToBeTranslatedWords.json', 'utf-8');
             const jsonData = JSON.parse(data);
             if (jsonData.notToBeTranslatedWords && Array.isArray(jsonData.notToBeTranslatedWords)) {
                 elizaLogger.info(`📌 Loaded ${jsonData.notToBeTranslatedWords.length} words to not translate.`);
