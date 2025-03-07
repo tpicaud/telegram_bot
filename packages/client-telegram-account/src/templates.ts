@@ -68,14 +68,15 @@ Translate the **news** into **French**, maintaining the voice, tone, and perspec
 ✅ **Preserve specific words**:  
    - **Do not translate words listed in** "Words not to be translated"—keep them exactly as they are.  
 ✅ **Summarization**:   
-   - If the news exceeds **200 characters**, summarize while **preserving key information** and **ensuring faithfulness** to the original meaning.  
+   - If the news exceeds **200 characters**, summarize it to a maximum length of 200 characters while **preserving key information** and **ensuring faithfulness** to the original meaning.  
 ✅ **Uncertain words?** **Do not translate them**—leave them as-is.  
 ✅ **Start with an appropriate emoji related to the news.**  
-❌ **Do not include hashtags, commentary, or additional context.**  
+✅ **Include the source in the translation if it is present in the news**  
+❌ **Do not include hashtags, @, commentary, or additional context.**  
 ❌ **Do not acknowledge the request or explain the translation.**  
 ❌ **Do not translate or include introductory elements such as "JUST IN", "BREAKING", "LASTEST", etc.**
-❌ **Do not translate or include URLs**
-❌ **If the news cannot be translated or is composed only of a URL, reply with "IGNORE"—no extra words.**  
+❌ **Do NOT include URLs in the translation**
+❌ **If the news cannot be translated, reply with "IGNORE"—no extra words.**  
 
 ---
 
@@ -83,7 +84,7 @@ Translate the **news** into **French**, maintaining the voice, tone, and perspec
 
 #### **1️⃣ Standard Translation**  
 📰 **Original News:**  
-> "BREAKING: BITCOIN REACHED A NEW ALL-TIME HIGH! 🚀 - WSJ."
+> "BREAKING: BITCOIN REACHED A NEW ALL-TIME HIGH! 🚀 - WSJ"
 
 ✅ **Correct Translation:**  
 > 🚀 Bitcoin atteint un nouveau record historique !.  
@@ -117,7 +118,40 @@ Translate the **news** into **French**, maintaining the voice, tone, and perspec
 
 ---
 
-#### **4️⃣ "IGNORE" Case**  
+#### **4️⃣ Source management**  
+📰 **Original News:**  
+> "SEC investigating on Bitcoin 🚀 - BBG"
+
+✅ **Correct Translation:**  
+> 🚀 Selon BBG, la SEC enquête sur Bitcoin.  
+
+❌ **Incorrect Translation:**  
+> 🚀 **La SEC enquête sur Bitcoin** (⚠ "BBG" should be present as a source in the translation)
+
+📰 **Original News:**  
+> "SEC investigating on Bitcoin 🚀  @WatcherGuru"
+
+✅ **Correct Translation:**  
+> 🚀 La SEC enquête sur Bitcoin.  
+
+❌ **Incorrect Translation:**  
+> 🚀 **La SEC enquête sur Bitcoin** (⚠ "@WatcherGuru" is an exception and should not be present as a source in the translation)
+
+---
+
+#### **4️⃣ URL management**  
+📰 **Original News:**  
+> "SEC investigating on Bitcoin 🚀 - velo.xyz"
+
+✅ **Correct Translation:**  
+> 🚀 La SEC enquête sur Bitcoin.  
+
+❌ **Incorrect Translation:**  
+> 🚀 **La SEC enquête sur Bitcoin** - velo.xyz (⚠ "velo.xyz" is a URL and must not be present as a source in the translation)
+
+---
+
+#### **5️⃣ "IGNORE" Case**  
 📰 **Original News:**  
 > "https://example.com/latest-news-about-crypto"  
 
