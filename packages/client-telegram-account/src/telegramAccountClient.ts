@@ -12,7 +12,7 @@ import {
     composeContext,
     generateMessageResponse,
     stringToUuid,
-    generateText
+    generateText,
 } from "@elizaos/core";
 import { TelegramAccountConfig } from "./environment.ts";
 import { TelegramClient, Api } from "telegram";
@@ -25,6 +25,12 @@ import { getTelegramAccountMessageHandlerTemplate, translateNewsTemplate, isVali
 import { escapeMarkdown, splitMessage } from "./utils.ts";
 import { Dialog } from "telegram/tl/custom/dialog";
 import fs from 'fs/promises';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 
 export class TelegramAccountClient {
     private runtime: IAgentRuntime;
@@ -440,21 +446,27 @@ export class TelegramAccountClient {
 
                                 const response = await this.generateResponseFromLLM(context)
 
-                                elizaLogger.info(`Translation received :\n ${response}`)
-
-                                if (!response || !response.includes('IGNORE')) {
-
-                                    // Execute callback to send messages and log memories
+                                elizaLogger.info(`Response from LLM: `, {
+                                    response
+                                })
+                                try {
+                                    const cleanedResponse = this.cleanJSONResponse(response);
+                                    const responseJSON = JSON.parse(cleanedResponse);
+                                    const news = responseJSON.news;
+                                        
+                                    // Execute callback to send messages
                                     const sentMessage = await this.client.sendMessage(
                                         repost_channel.id,
                                         {
-                                            message: response,
+                                            message: news,
                                             parseMode: 'markdown',
+                                            file: this.messageContainsVideo(message) ? message.media : null
                                         }
                                     );
                                     elizaLogger.info(`✅ Message sent to ${repost_channel.name}`)
-                                } else {
-                                    elizaLogger.error(`Cannot translate message ${message.id}`)
+                                } catch (error) {
+                                    elizaLogger.error("Error parsing response from LLM")
+                                    return false;
                                 }
                             } catch (error) {
                                 elizaLogger.error(`❌ Erreur lors de la gestion du message pour :`, error);
@@ -471,7 +483,7 @@ export class TelegramAccountClient {
     }
 
     private async getCryptoastChannel() {
-        const CRYPTOAST_CHANNEL_NAME = 'Cryptoast News';
+        const CRYPTOAST_CHANNEL_NAME = 'Cryptoast News Test';
 
         const dialogs = await this.client.getDialogs();
         const channels = dialogs.filter(d => d.isChannel);
@@ -492,7 +504,7 @@ export class TelegramAccountClient {
 
 
     private async getNewsChannels(): Promise<Dialog[]> {
-        const CHANNEL_NAMES = ['News Channel', 'Phoenix News (Only Important)', 'infinityhedge', 'Watcher Guru', 'Zoomer News', 'Wu Blockchain News', 'Tree News'];
+        const CHANNEL_NAMES = ['News Channel', /*'Phoenix News (Only Important)', 'Wu Blockchain News', 'Tree News', */'Watcher Guru'];
 
         const dialogs = await this.client.getDialogs();
         const channels = dialogs.filter(d => d.isChannel);
@@ -577,9 +589,10 @@ export class TelegramAccountClient {
 
             // Check if the news is not already processed
             elizaLogger.info(`Asking LLM to check if message ${message.id} is unprocessed`);
-            const isUnprocessed = await this.isUnprocessed(memory);
+            const isUnprocessed: boolean = await this.isUnprocessed(memory);
+            console.log(isUnprocessed)
             if (isUnprocessed) {
-
+                console.log('in isUnprocessed, value: ', isUnprocessed)
                 // The news is valid
                 elizaLogger.log(`News ${message.id} is considerd as valid news`);
                 await this.runtime.messageManager.createMemory(memory);
@@ -617,12 +630,14 @@ export class TelegramAccountClient {
             response
         })
 
-        // if already processed, continue, else create memory
-        if (response.trim() === 'TRUE') {
-            return true;
+        try {
+            const cleanedResponse = this.cleanJSONResponse(response);
+            const responseJSON = JSON.parse(cleanedResponse)
+            return responseJSON.isNews;
+        } catch (error) {
+            elizaLogger.error("Error parsing response from LLM")
+            return false;
         }
-
-        return false
     }
 
     private async isUnprocessed(memory: Memory): Promise<boolean> {
@@ -653,27 +668,32 @@ export class TelegramAccountClient {
 
         console.log(context);
 
-        const response = await this.generateResponseFromLLM(context)
+        const response = await this.generateResponseFromLLM(context);
 
         if (!response) {
-            return false
+            return false;
         }
 
         elizaLogger.info(`Response from LLM: `, {
             response
         })
 
-        // if already processed, continue, else create memory
-        if (response.trim() === 'TRUE') {
-            return true;
+        try {
+            const cleanedResponse = this.cleanJSONResponse(response);
+            const responseJSON = JSON.parse(cleanedResponse)
+            elizaLogger.info({
+                responseJSON
+            })
+            return responseJSON.isUnprocessed;
+        } catch (error) {
+            elizaLogger.error("Error parsing response from LLM");
+            return false;
         }
-
-        return false
     }
 
     private async generateResponseFromLLM(context: string, maxRetries: number = 4): Promise<string> {
         const baseDelay = 1000; // Délai initial en millisecondes (1 seconde)
-    
+
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 const response = await generateText({
@@ -689,14 +709,14 @@ export class TelegramAccountClient {
                     // Exponential backoff
                     const delay = baseDelay * Math.pow(2, attempt - 1); // Délai double à chaque échec
                     elizaLogger.warn(`Error generating response. Retrying in ${delay / 1000} seconds...`);
-                    
+
                     // Attendre le délai avant la prochaine tentative
                     await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
         }
     }
-    
+
 
     private async getLastProcessedNewsFromChannel(channel: Dialog): Promise<string[]> {
         const messages: string[] = [];
@@ -717,13 +737,10 @@ export class TelegramAccountClient {
         return messages;
     }
 
-    private cleanText(text: string): string {
-        return text.trim().replace(/\s+/g, ' ');
-    }
-
     private async loadNotToTranslateWords(): Promise<string[]> {
         try {
-            const data = await fs.readFile('./packages/client-telegram-account/data/notToBeTranslatedWords.json', 'utf-8');
+            const filePath = path.resolve(__dirname, '../data/notToBeTranslatedWords.json');
+            const data = await fs.readFile(filePath, 'utf-8');
             const jsonData = JSON.parse(data);
             if (jsonData.notToBeTranslatedWords && Array.isArray(jsonData.notToBeTranslatedWords)) {
                 elizaLogger.info(`📌 Loaded ${jsonData.notToBeTranslatedWords.length} words to not translate.`);
@@ -736,5 +753,33 @@ export class TelegramAccountClient {
             elizaLogger.error("❌ Error loading 'notToBeTranslatedWords.json':", error);
             return [];
         }
+    }
+
+
+    private messageContainsVideo(message: Api.Message): boolean {
+        elizaLogger.info({
+            message: message
+        })
+        if (message.media instanceof Api.MessageMediaDocument) {
+            const document = message.media.document;
+
+            // Vérifier si le document est défini
+            if (document instanceof Api.Document) {
+                // Vérifier le type MIME ou les attributs du document
+                return document.mimeType?.startsWith("video/") ||
+                    document.attributes.some(attr => attr instanceof Api.DocumentAttributeVideo);
+            }
+        }
+
+        return false;
+    }
+
+
+    private cleanText(text: string): string {
+        return text.trim().replace(/\s+/g, ' ');
+    }
+
+    private cleanJSONResponse(response: string): string {
+        return response.replace(/^```[\s\S]*?\n/, '').replace(/```$/, '').trim();
     }
 }
