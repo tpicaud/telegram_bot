@@ -6,7 +6,7 @@
     "allowDirectMessages": "false",
     "shouldOnlyJoinInAllowedGroups": true,
     "allowedGroupIds": [],
-    "modelProvider": "anthropic",
+    "modelProvider": "openrouter",
     "settings": {
       "secrets": {},
       "voice": {
