@@ -453,7 +453,7 @@ export class TelegramAccountClient {
                                     const cleanedResponse = this.cleanJSONResponse(response);
                                     const responseJSON = JSON.parse(cleanedResponse);
                                     const news = responseJSON.news;
-                                        
+
                                     // Execute callback to send messages
                                     const sentMessage = await this.client.sendMessage(
                                         repost_channel.id,
@@ -483,7 +483,7 @@ export class TelegramAccountClient {
     }
 
     private async getCryptoastChannel() {
-        const CRYPTOAST_CHANNEL_NAME = 'Cryptoast News Test';
+        const CRYPTOAST_CHANNEL_NAME = 'Cryptoast News';
 
         const dialogs = await this.client.getDialogs();
         const channels = dialogs.filter(d => d.isChannel);
@@ -504,7 +504,7 @@ export class TelegramAccountClient {
 
 
     private async getNewsChannels(): Promise<Dialog[]> {
-        const CHANNEL_NAMES = ['News Channel', /*'Phoenix News (Only Important)', 'Wu Blockchain News', 'Tree News', */'Watcher Guru'];
+        const CHANNEL_NAMES = ['News Channel', 'Phoenix News (Only Important)', 'Wu Blockchain News', 'Tree News', 'Watcher Guru'];
 
         const dialogs = await this.client.getDialogs();
         const channels = dialogs.filter(d => d.isChannel);
